@@ -49,6 +49,15 @@
 
 //#define ZAXON_DEVICE
 
+// While the Atari runs the cassette motor (C: mounted) the main screen is
+// replaced with a full screen, color, animated cassette. The tape moves from
+// the left reel to the right one along with the loading progress. Any button
+// hides it until the motor stops, the menu also comes back by itself
+// CASSETTE_LINGER_MS after the motor stops.
+
+#define CASSETTE_ANIMATION
+#define CASSETTE_LINGER_MS 1500
+
 // The card detection GPIO pin (9) state when the card is present, depending on
 // the sd card reader type and/or device circuitry might need to be 0.
 

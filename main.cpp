@@ -57,6 +57,10 @@ https://forums.atariage.com/topic/282759-databyte-disks-on-atari-810/?do=findCom
 
 #include "font_atari_data.hpp"
 
+#ifdef CASSETTE_ANIMATION
+#include "cassette_anim.hpp"
+#endif
+
 // In ms, time given to the user to press A/B during device boot
 #define usb_boot_delay 3000
 
@@ -558,6 +562,54 @@ void update_main_menu() {
 
 	}
 }
+
+#ifdef CASSETTE_ANIMATION
+CassetteAnim cassette_anim;
+
+// Called on every iteration of the main loop, returns true when the full
+// screen cassette is being shown (the rest of the main loop iteration
+// should then be skipped).
+bool cassette_screen() {
+	static bool shown = false;
+	static bool dismissed = false;
+	static uint32_t motor_off_time = 0;
+
+	uint32_t now = to_ms_since_boot(get_absolute_time());
+	bool mounted = mounts[0].mounted;
+	bool motor = mounted && cas_motor_on();
+	if(motor)
+		motor_off_time = now;
+	else if(now - motor_off_time > CASSETTE_LINGER_MS)
+		dismissed = false;
+
+	bool show = mounted && !dismissed && (motor || (shown && now - motor_off_time <= CASSETTE_LINGER_MS));
+
+	if(shown && !show) {
+		// Back to the regular main screen, redraw it completely
+		shown = false;
+		cursor_prev = -1;
+		update_main_menu();
+		return false;
+	}
+	if(!show)
+		return false;
+
+	shown = true;
+	uint32_t progress = 0;
+	FSIZE_t cs = cas_size >> 8;
+	FSIZE_t cp = mounts[0].status >> 8;
+	if(cs > 0 && cp > 0)
+		progress = (uint32_t)(cp >= cs ? CassetteAnim::progress_max : (uint64_t)cp * CassetteAnim::progress_max / cs);
+	graphics.set_font(&atari_font);
+	cassette_anim.draw(graphics, BG, std::string_view(&mounts[0].str[2]), progress, motor);
+	st7789.update(&graphics);
+	sleep_ms(20);
+
+	if(button_a.read() || button_b.read() || button_x.read() || button_y.read())
+		dismissed = true;
+	return true;
+}
+#endif
 
 static char str_fit[17];
 
@@ -1268,6 +1320,9 @@ int main() {
 	check_and_load_config(b_pressed);
 
 	update_colors();
+#ifdef CASSETTE_ANIMATION
+	cassette_anim.init(graphics);
+#endif
 
 	tud_mount_cb();
 
@@ -1312,6 +1367,10 @@ int main() {
 			cursor_prev = -1;
 			update_main_menu();
 		}
+#ifdef CASSETTE_ANIMATION
+		if(cassette_screen())
+			continue;
+#endif
 		int d = menu_to_mount[cursor_position];
 		if(button_x.read() && cursor_position > 0) {
 			cursor_prev = cursor_position;
