@@ -1,1 +1,57 @@
+yaml
+name: Build firmware
 
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake gcc-arm-none-eabi libnewlib-arm-none-eabi \
+            libstdc++-arm-none-eabi-newlib libusb-1.0-0-dev pkg-config
+
+      - name: Get Pico SDK and Pimoroni libraries
+        run: |
+          git clone --depth 1 https://github.com/raspberrypi/pico-sdk "$HOME/pico-sdk"
+          git -C "$HOME/pico-sdk" submodule update --init --depth 1
+          git clone --depth 1 https://github.com/pimoroni/pimoroni-pico "$HOME/pimoroni-pico"
+
+      - name: Build Pico 2 firmware (3 variants)
+        run: |
+          export PICO_SDK_PATH="$HOME/pico-sdk"
+          export PIMORONI_PICO_PATH="$HOME/pimoroni-pico"
+          mkdir -p out
+
+          build() {
+            rm -rf build && mkdir build && cd build
+            cmake -DPICO_BOARD=pico2 ..
+            make -j"$(nproc)"
+            mv a8_pico_sio.uf2 "../out/a8_pico2_sio_$1.uf2"
+            cd ..
+            git checkout config.h
+          }
+
+          # Pico 2 on the carrier board (config.h as it is)
+          build board
+
+          # Pico 2 standalone (display plugged directly onto the Pico)
+          sed -i 's|^#define RELOCATE_BUTTON_PINS|//#define RELOCATE_BUTTON_PINS|' config.h
+          build standalone
+
+          # Zaxon's version of the device
+          sed -i 's|^//#define ZAXON_DEVICE|#define ZAXON_DEVICE|' config.h
+          build zaxon
+
+      - name: Upload UF2 files
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-pico-sio-pico2-firmware
+          path: out/*.uf2
